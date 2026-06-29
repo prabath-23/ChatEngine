@@ -12,11 +12,11 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
 // Proxy all /v1/* requests to NVIDIA API
-app.all('/v1/*path', async (req, res) => {
+app.all('/api/v1/*path', async (req, res) => {
   const apiKey = req.headers['authorization'];
   if (!apiKey) return res.status(401).json({ error: 'Missing Authorization header' });
 
-  const targetUrl = NVIDIA_BASE + req.path.replace('/v1', '');
+  const targetUrl = NVIDIA_BASE + req.path.replace('/api/v1', '');
   const isStream = req.body?.stream === true;
 
   try {

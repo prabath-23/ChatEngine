@@ -3,19 +3,33 @@ const NVIDIA_BASE = 'https://integrate.api.nvidia.com/v1';
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  const url = new URL(req.url);
-  const targetUrl = NVIDIA_BASE + url.pathname.replace('/api/v1', '') + url.search;
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      },
+    });
+  }
 
   const apiKey = req.headers.get('authorization');
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
       status: 401,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   }
 
+  // Strip /v1 or /api/v1 prefix to get the NVIDIA API path
+  const url = new URL(req.url);
+  const apiPath = url.pathname.replace(/^\/(?:api\/)?v1/, '') || '/';
+  const targetUrl = NVIDIA_BASE + apiPath + url.search;
+
   const body = req.method !== 'GET' ? await req.text() : undefined;
-  const isStream = body ? JSON.parse(body)?.stream === true : false;
+  const isStream = body ? (() => { try { return JSON.parse(body)?.stream === true; } catch { return false; } })() : false;
 
   const upstream = await fetch(targetUrl, {
     method: req.method,

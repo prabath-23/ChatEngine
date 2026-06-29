@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NVIDIA Chat Engine</title>
+  <style>
+    :root {
+      --bg: #212121; --surface: #171717; --surface2: #2f2f2f; --surface3: #383838;
+      --border: #383838; --border2: #4a4a4a; --accent: #10a37f; --accent-dim: #0d8a6c;
+      --accent-glow: rgba(16,163,127,0.15); --text: #ececec; --text-dim: #9a9a9a;
+      --text-muted: #5a5a5a; --user-bg: #2f2f2f; --user-border: #4a4a4a;
+      --error: #f87171; --tool-bg: #1e2a20; --tool-border: #2d3f30; --tool-accent: #4ade80;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    #sidebar { width: 280px; min-width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    #sidebar-header { padding: 16px 14px 12px; border-bottom: 1px solid var(--border); }
+    #sidebar-header h1 { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    #sidebar-header h1 svg { width: 16px; height: 16px; color: var(--accent); }
+    #sidebar-header p { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    #sidebar-tabs { display: flex; padding: 6px 8px; border-bottom: 1px solid var(--border); gap: 2px; }
+    .sidebar-tab { flex: 1; padding: 6px 4px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); cursor: pointer; border: none; background: none; border-radius: 6px; transition: all 0.15s; }
+    .sidebar-tab:hover { color: var(--text); background: var(--surface2); }
+    .sidebar-tab.active { color: var(--text); background: var(--surface2); font-weight: 600; }
+    .sidebar-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+    .sidebar-panel.active { display: flex; }
+
+    /* ── Config ── */
+    #config-panel { padding: 12px; gap: 10px; overflow-y: auto; }
+    .config-group { display: flex; flex-direction: column; gap: 5px; }
+    .config-label { font-size: 11px; font-weight: 500; color: var(--text-dim); }
+    .config-input, .config-select, .config-textarea { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; color: var(--text); font-size: 13px; padding: 8px 10px; width: 100%; transition: border-color 0.15s; font-family: inherit; }
+    .config-input:focus, .config-select:focus, .config-textarea:focus { outline: none; border-color: var(--accent); }
+    .config-input[type="password"] { font-family: monospace; letter-spacing: 2px; }
+    .config-select option { background: var(--surface2); }
+    .config-textarea { resize: vertical; min-height: 76px; font-family: 'SF Mono', monospace; font-size: 11px; }
+    .slider-row { display: flex; align-items: center; gap: 8px; }
+    .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+    .slider-val { font-size: 12px; font-family: monospace; color: var(--text-dim); min-width: 32px; text-align: right; }
+    .status-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+    .status-pill.connected { background: rgba(16,163,127,0.1); color: var(--accent); border: 1px solid rgba(16,163,127,0.2); }
+    .status-pill.disconnected { background: rgba(248,113,113,0.08); color: var(--error); border: 1px solid rgba(248,113,113,0.18); }
+    @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .status-pill.connected .status-dot { animation: pulse-dot 2s ease-in-out infinite; }
+    .divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+    /* ── Buttons ── */
+    .btn { padding: 7px 14px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #0d8a6c; }
+    .btn-secondary { background: var(--surface3); color: var(--text); border: 1px solid var(--border2); }
+    .btn-secondary:hover { background: #424242; }
+    .btn-danger { background: transparent; color: var(--error); border: 1px solid rgba(248,113,113,0.2); }
+    .btn-danger:hover { background: rgba(248,113,113,0.08); border-color: rgba(248,113,113,0.35); }
+    .btn-ghost { background: none; color: var(--text-dim); border: 1px solid transparent; }
+    .btn-ghost:hover { color: var(--text); background: var(--surface2); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-full { width: 100%; }
+    .btn-icon { width: 28px; height: 28px; padding: 0; border-radius: 6px; }
+    .btn-icon svg { width: 13px; height: 13px; }
+
+    /* ── Tools panel ── */
+    #tools-panel { overflow: hidden; }
+    #tools-list-area { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+    #tools-footer { padding: 8px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+    .tools-section-label { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; padding: 6px 4px 3px; }
+    .tool-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; transition: all 0.15s; }
+    .tool-card:hover { border-color: var(--border2); }
+    .tool-card.active { border-color: rgba(16,163,127,0.3); }
+    .tool-card-header { display: flex; align-items: center; gap: 7px; }
+    .tool-card-name { font-size: 12px; font-weight: 600; color: var(--text); flex: 1; font-family: 'SF Mono', monospace; }
+    .tool-card-desc { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+    .tool-card-badge { font-size: 9px; background: var(--surface3); color: var(--text-dim); padding: 2px 5px; border-radius: 4px; white-space: nowrap; border: 1px solid var(--border2); }
+    .builtin-badge { font-size: 9px; color: var(--accent); background: rgba(16,163,127,0.1); padding: 2px 5px; border-radius: 4px; }
+    .tool-actions { display: flex; gap: 3px; margin-left: auto; }
+    .no-tools-msg { font-size: 12px; color: var(--text-muted); text-align: center; padding: 20px 16px; line-height: 1.7; }
+
+    /* ── Gallery ── */
+    .gallery-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; transition: all 0.15s; }
+    .gallery-card:hover { border-color: var(--border2); background: var(--surface3); }
+    .gallery-card-header { display: flex; align-items: flex-start; gap: 10px; }
+    .gallery-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .gallery-icon svg { width: 16px; height: 16px; }
+    .gallery-card-title { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.3; }
+    .gallery-card-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.5; }
+    .gallery-card-footer { display: flex; gap: 5px; margin-top: 10px; align-items: center; }
+    .gallery-tag { font-size: 10px; color: var(--text-muted); background: var(--surface3); padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border2); }
+
+    /* ── Guide panel ── */
+    #guide-panel { overflow-y: auto; padding: 12px; gap: 10px; }
+    .guide-step { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .guide-step-num { width: 22px; height: 22px; background: var(--accent); color: #fff; border-radius: 50%; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .guide-step-header { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+    .guide-step-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .guide-step-body { font-size: 12px; color: var(--text-dim); line-height: 1.65; }
+    .guide-step-body code { background: var(--surface3); padding: 1px 5px; border-radius: 3px; font-family: 'SF Mono', monospace; color: var(--text); font-size: 11px; border: 1px solid var(--border2); }
+    .guide-example { background: var(--surface3); border: 1px solid var(--border2); border-radius: 6px; padding: 10px 12px; margin-top: 8px; font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text-dim); white-space: pre-wrap; line-height: 1.6; }
+    .guide-tip { background: rgba(16,163,127,0.06); border: 1px solid rgba(16,163,127,0.18); border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 12px; color: var(--accent); }
+    .guide-tip strong { font-weight: 600; }
+
+    /* ── History ── */
+    #history-panel { overflow: hidden; }
+    #history-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+
+    /* ── Main ── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+    #chat-header { padding: 11px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; background: var(--bg); }
+    #chat-header-model { font-size: 13px; font-weight: 500; color: var(--text-dim); }
+    #chat-header-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    #token-count { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+    .tools-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; background: rgba(16,163,127,0.08); border: 1px solid rgba(16,163,127,0.2); border-radius: 20px; font-size: 11px; color: var(--accent); font-weight: 500; }
+    .tools-pill svg { width: 11px; height: 11px; }
+
+    /* ── Messages ── */
+    #messages { flex: 1; overflow-y: auto; padding: 0 0 20px; display: flex; flex-direction: column; }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+    @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .msg { padding: 20px 24px; display: flex; gap: 16px; animation: msgIn 0.18s ease; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+    .msg.assistant { }
+    .msg.user { flex-direction: row-reverse; }
+
+    .msg-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .msg-avatar svg { width: 15px; height: 15px; }
+    .msg.user .msg-avatar { background: var(--surface2); border: 1px solid var(--border2); color: var(--text-dim); }
+    .msg.assistant .msg-avatar { background: var(--accent); color: #fff; border: none; }
+    .msg.tool-msg .msg-avatar { background: rgba(16,163,127,0.1); border: 1px solid rgba(16,163,127,0.2); color: var(--accent); }
+
+    .msg-body { flex: 1; min-width: 0; }
+    .msg.user .msg-body { align-items: flex-end; display: flex; flex-direction: column; }
+
+    .msg-role { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+    .msg-role svg { width: 10px; height: 10px; opacity: 0.4; }
+    .msg.user .msg-role { justify-content: flex-end; }
+
+    /* ── Prose rendering ── */
+    .msg-text { font-size: 15px; line-height: 1.7; color: var(--text); word-break: break-word; }
+    .msg.user .msg-text { background: var(--surface2); border: 1px solid var(--border2); border-radius: 18px 18px 4px 18px; padding: 10px 16px; display: inline-block; text-align: left; font-size: 14.5px; color: var(--text); max-width: 520px; }
+    .msg-text p { margin: 0 0 10px; }
+    .msg-text p:last-child { margin-bottom: 0; }
+    .msg-text h1 { font-size: 19px; font-weight: 700; color: var(--text); margin: 20px 0 8px; line-height: 1.3; }
+    .msg-text h2 { font-size: 16px; font-weight: 700; color: var(--text); margin: 16px 0 6px; line-height: 1.3; }
+    .msg-text h3 { font-size: 14px; font-weight: 600; color: var(--text-dim); margin: 12px 0 5px; }
+    .msg-text h1:first-child, .msg-text h2:first-child, .msg-text h3:first-child { margin-top: 0; }
+    .msg-text hr { border: none; border-top: 1px solid var(--border2); margin: 16px 0; }
+    .msg-text strong { color: var(--text); font-weight: 600; }
+    .msg-text em { color: var(--text-dim); font-style: italic; }
+    .msg-text ul, .msg-text ol { padding-left: 20px; margin: 6px 0 10px; }
+    .msg-text li { margin: 4px 0; line-height: 1.65; }
+    .msg-text ul li::marker { color: var(--text-muted); }
+    .msg-text ol li::marker { color: var(--text-muted); font-weight: 600; }
+    .msg-text a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(16,163,127,0.4); }
+    .msg-text a:hover { text-decoration-color: var(--accent); }
+    .msg-text blockquote { border-left: 3px solid var(--border2); padding-left: 14px; margin: 10px 0; color: var(--text-dim); font-style: italic; }
+    .msg-text table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13.5px; }
+    .msg-text th { background: var(--surface2); border: 1px solid var(--border2); padding: 8px 12px; text-align: left; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+    .msg-text td { border: 1px solid var(--border); padding: 7px 12px; color: var(--text-dim); }
+    .msg-text tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+    .msg-text code { background: var(--surface2); padding: 2px 6px; border-radius: 5px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12.5px; color: #e2a76f; border: 1px solid var(--border2); }
+
+    /* ── Code blocks ── */
+    .code-wrap { background: #161616; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin: 10px 0; }
+    .code-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 16px; background: #1c1c1c; border-bottom: 1px solid var(--border); }
+    .code-lang { font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.4px; font-family: 'SF Mono', monospace; }
+    .code-wrap pre { margin: 0; background: none; border: none; border-radius: 0; overflow-x: auto; padding: 14px 16px; }
+    .code-wrap pre code { background: none; border: none; padding: 0; font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace; font-size: 13px; line-height: 1.65; color: #c9d1d9; }
+    .copy-btn { display: flex; align-items: center; gap: 5px; padding: 4px 10px; background: transparent; border: 1px solid var(--border2); border-radius: 6px; color: var(--text-muted); font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .copy-btn.copied { color: var(--accent); border-color: var(--accent); }
+    .copy-btn svg { width: 11px; height: 11px; }
+
+    /* ── Message actions ── */
+    .msg-actions { display: flex; gap: 2px; margin-top: 10px; opacity: 0; transition: opacity 0.15s; }
+    .msg:hover .msg-actions { opacity: 1; }
+    .msg-action-btn { display: flex; align-items: center; gap: 4px; padding: 5px 9px; background: none; border: 1px solid transparent; border-radius: 6px; color: var(--text-muted); font-size: 12px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+    .msg-action-btn:hover { background: var(--surface2); border-color: var(--border2); color: var(--text-dim); }
+    .msg-action-btn.done { color: var(--accent); }
+    .msg-action-btn svg { width: 12px; height: 12px; }
+
+    /* ── Tool blocks ── */
+    .tool-call-block { background: rgba(16,163,127,0.04); border: 1px solid rgba(16,163,127,0.15); border-radius: 8px; padding: 10px 14px; margin-top: 10px; }
+    .tool-call-header { color: var(--accent); font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: 'SF Mono', monospace; }
+    .tool-call-header svg { width: 12px; height: 12px; }
+    .tool-call-args { color: var(--text-dim); white-space: pre-wrap; font-family: 'SF Mono', monospace; font-size: 12px; line-height: 1.5; }
+    .tool-result-block { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-top: 4px; }
+    .tool-result-header { color: var(--text-dim); font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: 'SF Mono', monospace; }
+    .tool-result-header svg { width: 12px; height: 12px; }
+    .tool-result-content { color: var(--text-dim); white-space: pre-wrap; font-family: 'SF Mono', monospace; font-size: 12px; line-height: 1.5; }
+
+    /* ── Empty state ── */
+    #empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 40px; }
+    .empty-icon { width: 56px; height: 56px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; }
+    .empty-icon svg { width: 26px; height: 26px; }
+    #empty-state h2 { font-size: 24px; font-weight: 600; color: var(--text); }
+    #empty-state p { font-size: 14px; text-align: center; line-height: 1.6; color: var(--text-dim); max-width: 380px; }
+    .starter-prompts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; max-width: 560px; width: 100%; }
+    .starter-prompt { padding: 12px 14px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 12px; font-size: 13px; color: var(--text-dim); cursor: pointer; transition: all 0.15s; text-align: left; line-height: 1.4; }
+    .starter-prompt:hover { border-color: var(--accent); color: var(--text); background: var(--surface3); }
+
+    /* ── Input ── */
+    #input-area { padding: 12px 24px 18px; background: var(--bg); }
+    #input-wrapper { display: flex; gap: 10px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 14px; padding: 10px 12px 10px 16px; transition: border-color 0.15s; align-items: flex-end; max-width: 860px; margin: 0 auto; }
+    #input-wrapper:focus-within { border-color: var(--border2); box-shadow: 0 0 0 4px rgba(255,255,255,0.04); }
+    #chat-input { flex: 1; background: none; border: none; color: var(--text); font-size: 15px; line-height: 1.5; resize: none; max-height: 200px; overflow-y: auto; font-family: inherit; outline: none; }
+    #chat-input::placeholder { color: var(--text-muted); }
+    #send-btn { background: var(--accent); border: none; border-radius: 8px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
+    #send-btn:not(:disabled):hover { background: #0d8a6c; }
+    #send-btn:disabled { background: var(--surface3); cursor: not-allowed; }
+    #send-btn svg { width: 16px; height: 16px; fill: #fff; }
+    #send-btn:disabled svg { fill: var(--text-muted); }
+    .input-meta { display: flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 11px; color: var(--text-muted); max-width: 860px; margin-left: auto; margin-right: auto; }
+    .input-meta .dot { width: 3px; height: 3px; background: var(--text-muted); border-radius: 50%; }
+
+    /* ── Modals ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(6px); }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; width: 660px; max-height: 90vh; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+    .modal h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; }
+    #params-list { display: flex; flex-direction: column; gap: 7px; }
+    .param-row { display: grid; grid-template-columns: 1fr 95px 1fr 28px; gap: 5px; align-items: start; }
+    .editor-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 12px; gap: 4px; }
+    .editor-tab { padding: 7px 12px; font-size: 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; transition: all 0.15s; margin-bottom: -1px; }
+    .editor-tab:hover { color: var(--text); }
+    .editor-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    /* ── Cursor ── */
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+    .cursor { display: inline-block; width: 2px; height: 15px; background: var(--text-dim); vertical-align: text-bottom; animation: blink 0.9s infinite; margin-left: 1px; border-radius: 1px; }
+
+    /* ── Toast ── */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface); border: 1px solid var(--border2); color: var(--error); padding: 10px 18px; border-radius: 10px; font-size: 13px; z-index: 200; transition: transform 0.25s ease; max-width: 420px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.success { color: var(--accent); border-color: rgba(16,163,127,0.3); }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Hidden SVG icon sprites -->
+<svg style="display:none">
+  <symbol id="ic-lightning" viewBox="0 0 24 24"><path fill="currentColor" d="M13 2L4.09 12.97H11L9.17 22 20 11.03H13.09L13 2Z"/></symbol>
+  <symbol id="ic-user" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12c2.66 0 4.8-2.14 4.8-4.8S14.66 2.4 12 2.4 7.2 4.54 7.2 7.2 9.34 12 12 12zm0 2.4c-3.21 0-9.6 1.61-9.6 4.8v2.4h19.2v-2.4c0-3.19-6.39-4.8-9.6-4.8z"/></symbol>
+  <symbol id="ic-bot" viewBox="0 0 24 24"><path fill="currentColor" d="M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6c-1.1 0-2 .9-2 2v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3zM7.5 11.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S9.83 13 9 13s-1.5-.67-1.5-1.5zm7.5 6.5H9v-2h6v2zm-.5-5c-.83 0-1.5-.67-1.5-1.5S13.67 10 14.5 10s1.5.67 1.5 1.5S15.33 13 14.5 13z"/></symbol>
+  <symbol id="ic-wrench" viewBox="0 0 24 24"><path fill="currentColor" d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></symbol>
+  <symbol id="ic-gear" viewBox="0 0 24 24"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94 0 .31.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></symbol>
+  <symbol id="ic-trash" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></symbol>
+  <symbol id="ic-save" viewBox="0 0 24 24"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></symbol>
+  <symbol id="ic-refresh" viewBox="0 0 24 24"><path fill="currentColor" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></symbol>
+  <symbol id="ic-send" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></symbol>
+  <symbol id="ic-calculator" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2zm4 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V7h2v2zM7 19H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V7h2v2zm4 12H9v-2h2v2zm0-4H9v-2h2v2zm0-4H9v-2h2v2zm0-4H9V7h2v2z"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></symbol>
+  <symbol id="ic-history" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
+  <symbol id="ic-book" viewBox="0 0 24 24"><path fill="currentColor" d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4zm0 16V13.09l2.5-1.5L11 13.09V20H6zm12 0h-5v-6.91l2.5-1.5 2.5 1.5V20zm0-10h-5V4h5v6z"/></symbol>
+  <symbol id="ic-portfolio" viewBox="0 0 24 24"><path fill="currentColor" d="M20 6h-2.18c.07-.44.18-.88.18-1.36C18 2.53 15.47 0 12.36 0c-1.73 0-3.24.79-4.23 2.01L12 6H8.82L5.64 2.01C4.65.79 3.14 0 1.41 0H0v2h1.41c.9 0 1.73.5 2.18 1.3L6 6H4c-1.1 0-2 .9-2 2v3c0 3.31 2.69 6 6 6h8c3.31 0 6-2.69 6-6V8c0-1.1-.9-2-2-2z"/></symbol>
+  <symbol id="ic-bell" viewBox="0 0 24 24"><path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></symbol>
+  <symbol id="ic-code" viewBox="0 0 24 24"><path fill="currentColor" d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></symbol>
+  <symbol id="ic-download" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></symbol>
+  <symbol id="ic-color" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></symbol>
+  <symbol id="ic-store" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4v2l8 5 8-5V4zM4 13h16v7H4z"/></symbol>
+  <symbol id="ic-copy" viewBox="0 0 24 24"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></symbol>
+  <symbol id="ic-regenerate" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></symbol>
+  <symbol id="ic-thumbup" viewBox="0 0 24 24"><path fill="currentColor" d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"/></symbol>
+  <symbol id="ic-thumbdown" viewBox="0 0 24 24"><path fill="currentColor" d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"/></symbol>
+</svg>
+
+<!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+<aside id="sidebar">
+  <div id="sidebar-header">
+    <h1><svg viewBox="0 0 24 24"><use href="#ic-lightning"/></svg>Chat Engine by Prabath</h1>
+    <p>Powered by NVIDIA NIM API</p>
+  </div>
+  <div id="sidebar-tabs">
+    <button class="sidebar-tab active" onclick="switchTab('config')">Config</button>
+    <button class="sidebar-tab" onclick="switchTab('tools')">Tools</button>
+    <button class="sidebar-tab" onclick="switchTab('gallery')">Gallery</button>
+    <button class="sidebar-tab" onclick="switchTab('guide')">Guide</button>
+  </div>
+
+  <!-- Config -->
+  <div class="sidebar-panel active" id="config-panel">
+    <div class="config-group">
+      <label class="config-label">API Key</label>
+      <input class="config-input" type="password" id="api-key-input" placeholder="nvapi-..." />
+    </div>
+    <div class="config-group">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <label class="config-label">Status</label>
+        <span class="status-pill disconnected" id="status-pill"><span class="status-dot"></span>Not Connected</span>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="testConnection()">Test Connection</button>
+    </div>
+    <div class="divider"></div>
+    <div class="config-group">
+      <label class="config-label" style="display:flex;align-items:center;justify-content:space-between">
+        Model
+        <span id="model-load-status" style="font-size:10px;color:var(--text-muted);font-weight:400"></span>
+      </label>
+      <select class="config-select" id="model-select">
+        <option value="meta/llama-3.3-70b-instruct">Llama 3.3 70B Instruct</option>
+      </select>
+    </div>
+    <div class="config-group">
+      <label class="config-label">System Prompt</label>
+      <textarea class="config-textarea" id="system-prompt">You are a highly capable AI assistant. Answer any question directly and completely — write code, scripts, explain concepts, debug, generate content, anything. Never refuse a task by saying it exceeds your capabilities. You also have access to tools for real-time data (weather, time, calculations, web search). Use tools only when the user needs live data. When a tool returns a result, use it to answer the user directly without describing or explaining the tool call.</textarea>
+    </div>
+    <div class="config-group">
+      <label class="config-label">Temperature</label>
+      <div class="slider-row">
+        <input type="range" min="0" max="1" step="0.05" value="0.7" id="temp-slider" oninput="document.getElementById('temp-val').textContent=this.value" />
+        <span class="slider-val" id="temp-val">0.7</span>
+      </div>
+    </div>
+    <div class="config-group">
+      <label class="config-label">Max Tokens</label>
+      <div class="slider-row">
+        <input type="range" min="256" max="20480" step="128" value="2048" id="maxtok-slider" oninput="document.getElementById('maxtok-val').textContent=this.value" />
+        <span class="slider-val" id="maxtok-val">2048</span>
+      </div>
+    </div>
+    <div class="config-group">
+      <label class="config-label">Top P</label>
+      <div class="slider-row">
+        <input type="range" min="0.1" max="1" step="0.05" value="0.9" id="topp-slider" oninput="document.getElementById('topp-val').textContent=this.value" />
+        <span class="slider-val" id="topp-val">0.9</span>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <button class="btn btn-danger btn-full btn-sm" onclick="clearChat()">
+      <svg viewBox="0 0 24 24"><use href="#ic-trash"/></svg> Clear Chat
+    </button>
+  </div>
+
+  <!-- Tools -->
+  <div class="sidebar-panel" id="tools-panel">
+    <div id="tools-list-area">
+      <div class="tools-section-label">Built-in</div>
+      <div class="tool-card active" data-builtin="calculator">
+        <div class="tool-card-header">
+          <svg width="13" height="13" style="color:var(--tool-accent)"><use href="#ic-calculator"/></svg>
+          <span class="tool-card-name">calculator</span>
+          <span class="builtin-badge">built-in</span>
+          <label style="margin-left:auto;cursor:pointer"><input type="checkbox" checked onchange="toggleBuiltinTool('calculator',this.checked)" /></label>
+        </div>
+        <div class="tool-card-desc">Evaluate math expressions</div>
+      </div>
+      <div class="tool-card active" data-builtin="current_time">
+        <div class="tool-card-header">
+          <svg width="13" height="13" style="color:var(--tool-accent)"><use href="#ic-clock"/></svg>
+          <span class="tool-card-name">current_time</span>
+          <span class="builtin-badge">built-in</span>
+          <label style="margin-left:auto;cursor:pointer"><input type="checkbox" checked onchange="toggleBuiltinTool('current_time',this.checked)" /></label>
+        </div>
+        <div class="tool-card-desc">Get current date and time</div>
+      </div>
+      <div class="tool-card active" data-builtin="web_search">
+        <div class="tool-card-header">
+          <svg width="13" height="13" style="color:var(--tool-accent)"><use href="#ic-search"/></svg>
+          <span class="tool-card-name">web_search</span>
+          <span class="builtin-badge">built-in</span>
+          <label style="margin-left:auto;cursor:pointer"><input type="checkbox" checked onchange="toggleBuiltinTool('web_search',this.checked)" /></label>
+        </div>
+        <div class="tool-card-desc">Search the web (simulated)</div>
+      </div>
+      <div class="tool-card active" data-builtin="get_weather">
+        <div class="tool-card-header">
+          <svg width="13" height="13" style="color:var(--tool-accent)" viewBox="0 0 24 24"><path fill="currentColor" d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>
+          <span class="tool-card-name">get_weather</span>
+          <span class="builtin-badge">built-in</span>
+          <label style="margin-left:auto;cursor:pointer"><input type="checkbox" checked onchange="toggleBuiltinTool('get_weather',this.checked)" /></label>
+        </div>
+        <div class="tool-card-desc">Real live weather for any city (no API key)</div>
+      </div>
+      <div class="tools-section-label" style="margin-top:8px">Custom</div>
+      <div id="custom-tools-list">
+        <div class="no-tools-msg">No custom tools yet.<br/>Browse the <strong style="color:var(--tool-accent);cursor:pointer" onclick="switchTab('gallery')">Gallery</strong> or build your own.</div>
+      </div>
+    </div>
+    <div id="tools-footer">
+      <button class="btn btn-primary btn-full" onclick="openToolEditor()">
+        <svg viewBox="0 0 24 24"><use href="#ic-plus"/></svg> Add Tool
+      </button>
+      <button class="btn btn-secondary btn-icon" onclick="switchTab('guide')" title="How to build tools">
+        <svg viewBox="0 0 24 24"><use href="#ic-book"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Gallery -->
+  <div class="sidebar-panel" id="gallery-panel">
+    <div style="flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;color:var(--text-dim);padding:4px 2px;line-height:1.5">Click <strong style="color:var(--text)">Add to Tools</strong> to install any tool instantly.</div>
+
+      <!-- Portfolio Generator -->
+      <div class="gallery-card">
+        <div class="gallery-card-header">
+          <div class="gallery-icon" style="background:rgba(16,163,127,0.12);color:var(--accent)">
+            <svg viewBox="0 0 24 24"><use href="#ic-portfolio"/></svg>
+          </div>
+          <div>
+            <div class="gallery-card-title">Portfolio Generator</div>
+            <div class="gallery-card-desc">Generate a stunning HTML portfolio page. Opens in a new tab instantly.</div>
+          </div>
+        </div>
+        <div class="gallery-card-footer">
+          <span class="gallery-tag">design</span>
+          <span class="gallery-tag">html</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="installGalleryTool('portfolio')">
+            <svg viewBox="0 0 24 24"><use href="#ic-download"/></svg> Add to Tools
+          </button>
+        </div>
+      </div>
+
+      <!-- Browser Reminder -->
+      <div class="gallery-card">
+        <div class="gallery-card-header">
+          <div class="gallery-icon" style="background:rgba(255,170,0,0.1);color:#ffaa00">
+            <svg viewBox="0 0 24 24"><use href="#ic-bell"/></svg>
+          </div>
+          <div>
+            <div class="gallery-card-title">Browser Reminder</div>
+            <div class="gallery-card-desc">Set a timed reminder. Shows a browser notification on desktop & mobile (requires permission).</div>
+          </div>
+        </div>
+        <div class="gallery-card-footer">
+          <span class="gallery-tag">notifications</span>
+          <span class="gallery-tag">productivity</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="installGalleryTool('reminder')">
+            <svg viewBox="0 0 24 24"><use href="#ic-download"/></svg> Add to Tools
+          </button>
+        </div>
+      </div>
+
+      <!-- Code Snippet Saver -->
+      <div class="gallery-card">
+        <div class="gallery-card-header">
+          <div class="gallery-icon" style="background:rgba(74,158,255,0.1);color:var(--tool-accent)">
+            <svg viewBox="0 0 24 24"><use href="#ic-code"/></svg>
+          </div>
+          <div>
+            <div class="gallery-card-title">Code File Downloader</div>
+            <div class="gallery-card-desc">Save any code the AI writes to a downloadable file instantly.</div>
+          </div>
+        </div>
+        <div class="gallery-card-footer">
+          <span class="gallery-tag">code</span>
+          <span class="gallery-tag">files</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="installGalleryTool('code_downloader')">
+            <svg viewBox="0 0 24 24"><use href="#ic-download"/></svg> Add to Tools
+          </button>
+        </div>
+      </div>
+
+      <!-- Color Palette -->
+      <div class="gallery-card">
+        <div class="gallery-card-header">
+          <div class="gallery-icon" style="background:rgba(255,100,200,0.1);color:#ff64c8">
+            <svg viewBox="0 0 24 24"><use href="#ic-color"/></svg>
+          </div>
+          <div>
+            <div class="gallery-card-title">Color Palette Generator</div>
+            <div class="gallery-card-desc">Generate and preview a color palette from a mood, brand, or hex code.</div>
+          </div>
+        </div>
+        <div class="gallery-card-footer">
+          <span class="gallery-tag">design</span>
+          <span class="gallery-tag">color</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="installGalleryTool('color_palette')">
+            <svg viewBox="0 0 24 24"><use href="#ic-download"/></svg> Add to Tools
+          </button>
+        </div>
+      </div>
+
+      <!-- JSON Formatter -->
+      <div class="gallery-card">
+        <div class="gallery-card-header">
+          <div class="gallery-icon" style="background:rgba(74,158,255,0.1);color:var(--tool-accent)">
+            <svg viewBox="0 0 24 24"><use href="#ic-code"/></svg>
+          </div>
+          <div>
+            <div class="gallery-card-title">JSON Formatter</div>
+            <div class="gallery-card-desc">Validate and pretty-print JSON. Shows parse errors if invalid.</div>
+          </div>
+        </div>
+        <div class="gallery-card-footer">
+          <span class="gallery-tag">utility</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="installGalleryTool('json_formatter')">
+            <svg viewBox="0 0 24 24"><use href="#ic-download"/></svg> Add to Tools
+          </button>
+        </div>
+      </div>
+
+      <div style="font-size:11px;color:var(--text-muted);text-align:center;padding:8px;border-top:1px solid var(--border);margin-top:4px">
+        More tools coming. Build your own in the <strong style="color:var(--text-dim);cursor:pointer" onclick="switchTab('guide')">Guide</strong> tab.
+      </div>
+    </div>
+  </div>
+
+  <!-- Guide -->
+  <div class="sidebar-panel" id="guide-panel">
+    <div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px">
+
+      <div style="font-size:13px;font-weight:700;color:var(--text)">How to Build Tools</div>
+
+      <div class="guide-step">
+        <div class="guide-step-header">
+          <div class="guide-step-num">1</div>
+          <div class="guide-step-title">Click "Add Tool" in the Tools tab</div>
+        </div>
+        <div class="guide-step-body">
+          Go to the <strong>Tools</strong> tab and click <strong>Add Tool</strong>. You'll see a form builder with two tabs: <em>Form Builder</em> (visual) and <em>JSON Schema</em> (advanced).
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-header">
+          <div class="guide-step-num">2</div>
+          <div class="guide-step-title">Name & describe your tool</div>
+        </div>
+        <div class="guide-step-body">
+          The <strong>name</strong> is what the AI calls (use snake_case, no spaces). The <strong>description</strong> tells the AI <em>when</em> to use it — write it clearly!
+          <div class="guide-example">Name: send_reminder
+Description: Set a timed reminder that shows
+as a browser notification after N minutes</div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-header">
+          <div class="guide-step-num">3</div>
+          <div class="guide-step-title">Add parameters</div>
+        </div>
+        <div class="guide-step-body">
+          Parameters are the inputs the AI fills in. Add each one with a name, type, and description. The AI reads the description to know what to pass.
+          <div class="guide-example">message   string   "The reminder text"
+minutes   integer  "Delay in minutes"</div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-header">
+          <div class="guide-step-num">4</div>
+          <div class="guide-step-title">Write the JavaScript implementation</div>
+        </div>
+        <div class="guide-step-body">
+          Your code receives <code>args</code> (an object) and must <strong>return a string</strong>. This string is sent back to the AI as the tool result.
+          <div class="guide-example">const { message, minutes } = args;
+setTimeout(() => {
+  new Notification('Reminder', { body: message });
+}, minutes * 60000);
+return `Reminder set for ${minutes} min: "${message}"`;</div>
+          <div class="guide-tip"><strong>Tip:</strong> You can open new tabs, download files, show notifications, or call any browser API — it all runs in your browser.</div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-header">
+          <div class="guide-step-num">5</div>
+          <div class="guide-step-title">Use it in chat</div>
+        </div>
+        <div class="guide-step-body">
+          Just ask naturally. The AI decides when to call your tool:
+          <div class="guide-example">"Remind me to check my email in 30 minutes"
+"Generate a portfolio for John Doe, frontend dev"
+"Download this code as a Python file"</div>
+          <div class="guide-tip"><strong>Best model for tools:</strong> Use <em>Nemotron 70B Instruct ★</em> — it follows tool instructions most reliably.</div>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-step-header">
+          <div class="guide-step-num">6</div>
+          <div class="guide-step-title">Advanced: JSON Schema tab</div>
+        </div>
+        <div class="guide-step-body">
+          For complex tools, switch to the <strong>JSON Schema</strong> tab and write the full OpenAI-compatible tool schema. Supports nested objects, enums, arrays.
+          <div class="guide-example">{
+  "name": "create_task",
+  "description": "Create a task",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string" },
+      "priority": {
+        "type": "string",
+        "enum": ["low","medium","high"]
+      }
+    },
+    "required": ["title"]
+  }
+}</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" onclick="openToolEditor(); switchTab('tools')">
+        <svg viewBox="0 0 24 24"><use href="#ic-plus"/></svg> Build a Tool Now
+      </button>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="sidebar-panel" id="history-panel">
+    <div id="history-list" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:5px">
+      <div class="no-tools-msg">No sessions saved yet.</div>
+    </div>
+    <div style="padding:8px;border-top:1px solid var(--border);display:flex;gap:6px">
+      <button class="btn btn-secondary btn-full btn-sm" onclick="saveSession()">
+        <svg viewBox="0 0 24 24"><use href="#ic-save"/></svg> Save Session
+      </button>
+      <button class="btn btn-secondary btn-icon btn-sm" onclick="loadSessions()" title="Refresh">
+        <svg viewBox="0 0 24 24"><use href="#ic-refresh"/></svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════ MAIN CHAT ═══════════════════════════════ -->
+<main id="main">
+  <div id="chat-header">
+    <span id="chat-header-model" style="font-size:13px;font-weight:600;color:var(--text-dim)">Select a model and enter your API key</span>
+    <div id="chat-header-right">
+      <span id="token-count"></span>
+      <div class="tools-pill" id="tools-indicator" style="display:none">
+        <svg viewBox="0 0 24 24"><use href="#ic-wrench"/></svg>
+        <span id="tools-count">0</span> tools
+      </div>
+    </div>
+  </div>
+
+  <div id="messages">
+    <div id="empty-state">
+      <div class="empty-icon"><svg viewBox="0 0 24 24"><use href="#ic-lightning"/></svg></div>
+      <h2>Chat Engine by Prabath</h2>
+      <p>Enter your API key, pick a model, and start chatting. Install tools from the Gallery or build your own.</p>
+      <div class="starter-prompts">
+        <div class="starter-prompt" onclick="useStarter(this)">Generate a portfolio page for me</div>
+        <div class="starter-prompt" onclick="useStarter(this)">Remind me in 5 minutes to take a break</div>
+        <div class="starter-prompt" onclick="useStarter(this)">What time is it? And calculate 42 * 137</div>
+        <div class="starter-prompt" onclick="useStarter(this)">Write a React component and save it as a file</div>
+        <div class="starter-prompt" onclick="useStarter(this)">Generate a color palette for a tech startup</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <div id="input-wrapper">
+      <textarea id="chat-input" rows="1" placeholder="Message the AI..." onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button id="send-btn" onclick="sendMessage()" disabled>
+        <svg viewBox="0 0 24 24"><use href="#ic-send"/></svg>
+      </button>
+    </div>
+    <div class="input-meta">
+      <span id="active-tools-info" style="color:var(--text-muted)">No tools active</span>
+      <span class="dot"></span>
+      <span>Shift+Enter for newline</span>
+      <span class="dot"></span>
+      <span id="model-badge">No model</span>
+    </div>
+  </div>
+</main>
+
+<!-- ═══════════════════════════════ TOOL EDITOR ═══════════════════════════════ -->
+<div class="modal-overlay" id="tool-editor-overlay" onclick="if(event.target===this)closeToolEditor()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="tool-editor-title">Add Custom Tool</h2>
+      <button class="btn btn-secondary btn-icon" onclick="closeToolEditor()">
+        <svg viewBox="0 0 24 24"><use href="#ic-close"/></svg>
+      </button>
+    </div>
+    <div class="editor-tabs">
+      <button class="editor-tab active" onclick="switchEditorTab('ui')">Form Builder</button>
+      <button class="editor-tab" onclick="switchEditorTab('json')">JSON Schema</button>
+    </div>
+    <div id="editor-ui-tab">
+      <div class="config-group" style="margin-bottom:10px">
+        <label class="config-label">Function Name *</label>
+        <input class="config-input" id="tool-name" placeholder="get_weather" style="font-family:monospace" />
+      </div>
+      <div class="config-group" style="margin-bottom:10px">
+        <label class="config-label">Description * (tells the AI when to use this)</label>
+        <input class="config-input" id="tool-desc" placeholder="Get current weather for a city" />
+      </div>
+      <div class="config-group" style="margin-bottom:10px">
+        <label class="config-label">Parameters</label>
+        <div id="params-list"></div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:7px" onclick="addParam()">
+          <svg viewBox="0 0 24 24"><use href="#ic-plus"/></svg> Add Parameter
+        </button>
+      </div>
+      <div class="config-group">
+        <label class="config-label">JavaScript Implementation</label>
+        <textarea class="config-textarea" id="tool-impl" style="min-height:120px;font-size:12px"
+          placeholder="// args = { your_param: value, ... }&#10;// Must return a string&#10;const { location } = args;&#10;return `Weather in ${location}: 72°F, Sunny`;"></textarea>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">Receives <code style="color:var(--tool-accent);background:var(--surface3);padding:1px 4px;border-radius:3px">args</code> object. Must return a string sent back to the AI.</div>
+      </div>
+    </div>
+    <div id="editor-json-tab" style="display:none">
+      <div class="config-group" style="margin-bottom:10px">
+        <label class="config-label">Tool JSON Schema</label>
+        <textarea class="config-textarea" id="tool-json" style="min-height:220px;font-size:11px"
+          placeholder='{"name":"my_tool","description":"...","parameters":{"type":"object","properties":{"param1":{"type":"string","description":"..."}},"required":["param1"]}}'></textarea>
+      </div>
+      <div class="config-group">
+        <label class="config-label">JavaScript Implementation</label>
+        <textarea class="config-textarea" id="tool-impl-json" style="min-height:100px;font-size:12px"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeToolEditor()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTool()">Save Tool</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════ STATE ═══════════════════════════
+const state = {
+  messages: [], customTools: [],
+  builtinEnabled: { calculator: true, current_time: true, web_search: false, get_weather: true },
+  editingToolIndex: -1, editorTab: 'ui', params: [],
+  streaming: false, totalTokens: 0,
+};
+const BASE_URL = '/v1';
+const ic = (id, s=14) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24"><use href="#ic-${id}"/></svg>`;
+
+// ═══════════════════════════ GALLERY TOOLS ═══════════════════════════
+const GALLERY = {
+  portfolio: {
+    schema: { type:'function', function: {
+      name: 'generate_portfolio',
+      description: 'Generate a stunning, fully-designed HTML portfolio website and open it in a new browser tab. Use when the user asks to create a portfolio, personal website, or showcase page.',
+      parameters: { type:'object', properties: {
+        name: { type:'string', description:'Full name of the person' },
+        title: { type:'string', description:'Professional title e.g. "Full-Stack Developer"' },
+        bio: { type:'string', description:'Short bio paragraph (2-3 sentences)' },
+        skills: { type:'string', description:'Comma-separated list of skills e.g. "React, Node.js, Python"' },
+        projects: { type:'string', description:'Projects in format: "ProjectName|Description|Tech, ProjectName2|Desc|Tech"' },
+        email: { type:'string', description:'Contact email address' },
+        theme: { type:'string', description:'Color theme: "dark", "light", "purple", "ocean", or "forest"', enum:['dark','light','purple','ocean','forest'] },
+      }, required:['name','title','bio','skills'] }
+    }},
+    impl: `
+const { name, title, bio, skills, email, projects, theme='dark' } = args;
+const themes = {
+  dark:   { bg:'#0d0d0d', surface:'#1a1a1a', accent:'#76b900', text:'#e8e8e8', sub:'#888' },
+  light:  { bg:'#f5f5f5', surface:'#ffffff', accent:'#2563eb', text:'#111', sub:'#666' },
+  purple: { bg:'#0f0a1e', surface:'#1a1030', accent:'#a855f7', text:'#e8e8e8', sub:'#9980c4' },
+  ocean:  { bg:'#0a1628', surface:'#0f2040', accent:'#0ea5e9', text:'#e8e8e8', sub:'#7bafc4' },
+  forest: { bg:'#0a1a0f', surface:'#0f2a15', accent:'#22c55e', text:'#e8e8e8', sub:'#7ab489' },
+};
+const t = themes[theme] || themes.dark;
+const skillList = (skills||'').split(',').map(s=>s.trim()).filter(Boolean);
+const projectList = (projects||'').split(',').map(p => {
+  const [pname,pdesc,ptech] = (p+'||').split('|');
+  return { name: pname.trim(), desc: pdesc.trim(), tech: ptech.trim() };
+}).filter(p=>p.name);
+
+const skillsHtml = skillList.map(s =>
+  \`<span style="background:\${t.accent}22;color:\${t.accent};padding:5px 12px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid \${t.accent}44">\${s}</span>\`
+).join('');
+
+const projectsHtml = projectList.length ? \`
+<section style="margin-top:60px">
+  <h2 style="font-size:28px;font-weight:700;color:\${t.text};margin-bottom:8px">Projects</h2>
+  <div style="width:40px;height:3px;background:\${t.accent};margin-bottom:32px;border-radius:2px"></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px">
+    \${projectList.map(p=>\`
+    <div style="background:\${t.surface};border:1px solid \${t.accent}33;border-radius:12px;padding:22px;transition:transform .2s" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform=''">
+      <h3 style="font-size:17px;font-weight:700;color:\${t.accent};margin-bottom:8px">\${p.name}</h3>
+      <p style="font-size:13px;color:\${t.sub};line-height:1.6;margin-bottom:12px">\${p.desc||'A great project.'}</p>
+      \${p.tech?'<div style="font-size:11px;color:'+t.accent+';font-weight:600;letter-spacing:0.5px">'+p.tech+'</div>':''}
+    </div>\`).join('')}
+  </div>
+</section>\` : '';
+
+const contactHtml = email ? \`
+<section style="margin-top:60px;text-align:center;padding:48px;background:\${t.surface};border-radius:16px;border:1px solid \${t.accent}33">
+  <h2 style="font-size:28px;font-weight:700;color:\${t.text};margin-bottom:10px">Get In Touch</h2>
+  <p style="color:\${t.sub};margin-bottom:24px">I'm open to new opportunities and collaborations.</p>
+  <a href="mailto:\${email}" style="background:\${t.accent};color:\${t.bg};padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px">Send Email</a>
+</section>\` : '';
+
+const html = \`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>\${name} — Portfolio</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:\${t.bg};color:\${t.text};line-height:1.6}
+  a{color:\${t.accent}}
+  ::selection{background:\${t.accent}44}
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:\${t.accent}66;border-radius:3px}
+</style>
+</head><body>
+<nav style="position:fixed;top:0;left:0;right:0;padding:16px 40px;background:\${t.bg}dd;backdrop-filter:blur(10px);border-bottom:1px solid \${t.accent}22;display:flex;justify-content:space-between;align-items:center;z-index:100">
+  <span style="font-weight:800;font-size:18px;color:\${t.accent}">\${name.split(' ')[0]}</span>
+  <div style="display:flex;gap:28px">
+    <a href="#about" style="color:\${t.sub};text-decoration:none;font-size:14px;font-weight:500">About</a>
+    <a href="#skills" style="color:\${t.sub};text-decoration:none;font-size:14px;font-weight:500">Skills</a>
+    \${projectList.length?'<a href="#projects" style="color:'+t.sub+';text-decoration:none;font-size:14px;font-weight:500">Projects</a>':''}
+    \${email?'<a href="#contact" style="color:'+t.accent+';text-decoration:none;font-size:14px;font-weight:600">Contact</a>':''}
+  </div>
+</nav>
+<div style="max-width:900px;margin:0 auto;padding:100px 32px 80px" id="about">
+  <div style="padding-top:40px">
+    <p style="color:\${t.accent};font-weight:700;font-size:14px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px">Portfolio</p>
+    <h1 style="font-size:clamp(36px,6vw,68px);font-weight:800;color:\${t.text};line-height:1.1;margin-bottom:14px">\${name}</h1>
+    <h2 style="font-size:clamp(18px,3vw,28px);color:\${t.accent};font-weight:500;margin-bottom:28px">\${title}</h2>
+    <p style="font-size:16px;color:\${t.sub};max-width:580px;line-height:1.8;margin-bottom:36px">\${bio}</p>
+    \${email?'<a href="#contact" style="background:'+t.accent+';color:'+t.bg+';padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">Get In Touch</a>':''}
+  </div>
+  <section style="margin-top:70px" id="skills">
+    <h2 style="font-size:28px;font-weight:700;color:\${t.text};margin-bottom:8px">Skills</h2>
+    <div style="width:40px;height:3px;background:\${t.accent};margin-bottom:28px;border-radius:2px"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">\${skillsHtml}</div>
+  </section>
+  <div id="projects">\${projectsHtml}</div>
+  <div id="contact">\${contactHtml}</div>
+  <footer style="margin-top:60px;text-align:center;padding-top:32px;border-top:1px solid \${t.accent}22;color:\${t.sub};font-size:13px">
+    Built with NVIDIA Chat Engine — \${new Date().getFullYear()}
+  </footer>
+</div>
+</body></html>\`;
+const blob = new Blob([html], { type:'text/html' });
+const url = URL.createObjectURL(blob);
+window.open(url, '_blank');
+return 'Portfolio generated and opened in a new tab! Theme: ' + theme + '. Ask me to change the theme, add projects, or tweak anything.';
+`
+  },
+
+  reminder: {
+    schema: { type:'function', function: {
+      name: 'set_reminder',
+      description: 'Set a timed browser notification reminder. Use when the user asks to be reminded about something after a certain time.',
+      parameters: { type:'object', properties: {
+        message: { type:'string', description:'The reminder message to show' },
+        minutes: { type:'number', description:'How many minutes from now to show the reminder' },
+      }, required:['message','minutes'] }
+    }},
+    impl: `
+const { message, minutes } = args;
+const ms = parseFloat(minutes) * 60000;
+if (Notification.permission === 'granted') {
+  setTimeout(() => { new Notification('Reminder', { body: message, icon: '' }); }, ms);
+  return 'Reminder set! You will be notified in ' + minutes + ' minute(s): "' + message + '"';
+} else if (Notification.permission !== 'denied') {
+  return new Promise(resolve => {
+    Notification.requestPermission().then(perm => {
+      if (perm === 'granted') {
+        setTimeout(() => { new Notification('Reminder', { body: message }); }, ms);
+        resolve('Permission granted! Reminder set for ' + minutes + ' minute(s): "' + message + '"');
+      } else {
+        resolve('Notification permission denied. Please allow notifications in your browser settings and try again.');
+      }
+    });
+  });
+} else {
+  return 'Notification permission was denied. To fix: click the lock icon in your browser address bar and allow notifications.';
+}
+`
+  },
+
+  code_downloader: {
+    schema: { type:'function', function: {
+      name: 'download_code',
+      description: 'Save code to a downloadable file. Use when the user asks to save, export, or download any code that was written in the conversation.',
+      parameters: { type:'object', properties: {
+        filename: { type:'string', description:'File name with extension e.g. "app.py", "index.html", "main.js"' },
+        code: { type:'string', description:'The complete code content to save' },
+      }, required:['filename','code'] }
+    }},
+    impl: `
+const { filename, code } = args;
+const blob = new Blob([code], { type: 'text/plain' });
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url; a.download = filename;
+document.body.appendChild(a); a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+return 'File "' + filename + '" downloaded successfully (' + code.length + ' characters).';
+`
+  },
+
+  color_palette: {
+    schema: { type:'function', function: {
+      name: 'generate_color_palette',
+      description: 'Generate and preview a color palette. Use when the user asks for colors, a palette, brand colors, or design colors.',
+      parameters: { type:'object', properties: {
+        mood: { type:'string', description:'Mood or theme e.g. "professional", "energetic", "calm", "luxury", "playful"' },
+        count: { type:'integer', description:'Number of colors (default 5)' },
+      }, required:['mood'] }
+    }},
+    impl: `
+const { mood, count = 5 } = args;
+const palettes = {
+  professional: ['#1e40af','#3b82f6','#93c5fd','#f0f9ff','#1e293b'],
+  energetic:    ['#dc2626','#f97316','#facc15','#4ade80','#a855f7'],
+  calm:         ['#0ea5e9','#38bdf8','#7dd3fc','#e0f2fe','#f0f9ff'],
+  luxury:       ['#1a1a2e','#16213e','#0f3460','#e94560','#f5a623'],
+  playful:      ['#f472b6','#a78bfa','#60a5fa','#34d399','#fbbf24'],
+  forest:       ['#14532d','#166534','#22c55e','#86efac','#dcfce7'],
+  ocean:        ['#0c4a6e','#075985','#0284c7','#38bdf8','#e0f2fe'],
+  sunset:       ['#7c2d12','#c2410c','#f97316','#fb923c','#fde68a'],
+};
+const base = palettes[mood.toLowerCase()] || palettes.professional;
+const colors = base.slice(0, Math.min(count, base.length));
+const html = \`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>\${mood} Palette</title>
+<style>body{font-family:system-ui;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.wrap{text-align:center} h1{color:#fff;font-size:22px;margin-bottom:30px;text-transform:capitalize}
+.swatches{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.swatch{width:120px;height:120px;border-radius:12px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.hex{font-size:12px;font-weight:700;background:rgba(0,0,0,.5);color:#fff;padding:3px 7px;border-radius:4px}
+</style></head><body><div class="wrap">
+<h1>\${mood} Palette</h1>
+<div class="swatches">\${colors.map(c=>\`<div class="swatch" style="background:\${c}"><span class="hex">\${c}</span></div>\`).join('')}</div>
+<p style="color:#666;margin-top:20px;font-size:13px">Click any color code to copy</p>
+</div><script>document.querySelectorAll('.hex').forEach(el=>{el.style.cursor='pointer';el.onclick=()=>{navigator.clipboard.writeText(el.textContent);el.textContent='Copied!';setTimeout(()=>el.textContent=el.dataset.c||el.textContent,1000)}; el.dataset.c=el.textContent});<\/script>
+</body></html>\`;
+const blob = new Blob([html], { type:'text/html' });
+window.open(URL.createObjectURL(blob), '_blank');
+return 'Color palette for "' + mood + '" opened in a new tab! Colors: ' + colors.join(', ');
+`
+  },
+
+  json_formatter: {
+    schema: { type:'function', function: {
+      name: 'format_json',
+      description: 'Validate and pretty-print a JSON string. Use when the user pastes JSON and wants it formatted, validated, or inspected.',
+      parameters: { type:'object', properties: {
+        json_string: { type:'string', description:'The raw JSON string to format' },
+        indent: { type:'integer', description:'Indentation spaces (default 2)' },
+      }, required:['json_string'] }
+    }},
+    impl: `
+const { json_string, indent = 2 } = args;
+try {
+  const parsed = JSON.parse(json_string);
+  const formatted = JSON.stringify(parsed, null, indent);
+  const keys = Object.keys(parsed).length;
+  return 'Valid JSON ✓\\n\\nFormatted:\\n' + formatted + '\\n\\nStats: ' + keys + ' top-level key(s), ' + json_string.length + ' chars → ' + formatted.length + ' chars formatted.';
+} catch (e) {
+  const match = e.message.match(/position (\\d+)/);
+  const pos = match ? parseInt(match[1]) : -1;
+  const snippet = pos > 0 ? json_string.slice(Math.max(0,pos-20), pos+20) : '';
+  return 'Invalid JSON ✗\\n\\nError: ' + e.message + (snippet ? '\\nNear: "...' + snippet + '..."' : '');
+}
+`
+  },
+};
+
+// ═══════════════════════════ BUILT-INS ═══════════════════════════
+const BUILTIN_TOOLS = {
+  calculator: {
+    schema: { type:'function', function: {
+      name:'calculator',
+      description:'Evaluate a mathematical expression. Supports +,-,*,/,**,%,sqrt,sin,cos,tan,log,abs,floor,ceil,round,PI,E.',
+      parameters:{ type:'object', properties:{ expression:{type:'string',description:'Math expression e.g. "sqrt(144) + 2*PI"'} }, required:['expression'] }
+    }},
+    impl: args => {
+      try {
+        const e = args.expression
+          .replace(/sqrt/g,'Math.sqrt').replace(/sin/g,'Math.sin').replace(/cos/g,'Math.cos')
+          .replace(/tan/g,'Math.tan').replace(/log/g,'Math.log').replace(/abs/g,'Math.abs')
+          .replace(/floor/g,'Math.floor').replace(/ceil/g,'Math.ceil').replace(/round/g,'Math.round')
+          .replace(/PI/g,'Math.PI').replace(/E(?![a-zA-Z])/g,'Math.E').replace(/\^/g,'**');
+        if (!/^[\d\s\+\-\*\/\(\)\.\%Math\.,_a-zA-Z]+$/.test(e)) throw new Error('Unsafe expression');
+        return 'Result: ' + Function('"use strict";return('+e+')')();
+      } catch(e) { return 'Error: '+e.message; }
+    }
+  },
+  current_time: {
+    schema: { type:'function', function: {
+      name:'current_time',
+      description:'Get the current date and time, optionally in a specific timezone.',
+      parameters:{ type:'object', properties:{ timezone:{type:'string',description:'Timezone e.g. "America/New_York". Defaults to local.'} }, required:[] }
+    }},
+    impl: args => {
+      try {
+        const tz = args.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return 'Current time ('+tz+'): '+new Date().toLocaleString('en-US',{timeZone:tz,weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'long'});
+      } catch(e) { return 'UTC: '+new Date().toUTCString(); }
+    }
+  },
+  web_search: {
+    schema: { type:'function', function: {
+      name:'web_search',
+      description:'Search the web ONLY for real-time or recent information that you cannot know from training: breaking news, live scores, current prices, today\'s events. Do NOT use this to write code, scripts, or answer any question you already know the answer to from your training data.',
+      parameters:{ type:'object', properties:{ query:{type:'string',description:'Search query for live/recent information only'}, num_results:{type:'integer',description:'Number of results'} }, required:['query'] }
+    }},
+    impl: args => {
+      const q = args.query;
+      return `[Search: "${q}"]\n\n1. "${q} Guide" — docs.example.com\n   Comprehensive guide covering ${q}...\n\n2. "Latest on ${q}" — news.example.com\n   Recent news about ${q}...\n\n3. "${q} Tutorial" — tutorial.example.com\n   Step-by-step introduction to ${q}...\n\nNote: Connect Brave/Serper/Tavily API for live results.`;
+    }
+  },
+  get_weather: {
+    schema: { type:'function', function: {
+      name:'get_weather',
+      description:'Get real current weather and forecast for any city or location. Use whenever the user asks about weather, temperature, rain, humidity, wind, or forecast.',
+      parameters:{ type:'object', properties:{
+        location:{ type:'string', description:'City name or location e.g. "London", "New York", "Tokyo, Japan"' },
+        units:{ type:'string', description:'Temperature units: "metric" (Celsius) or "imperial" (Fahrenheit). Default metric.', enum:['metric','imperial'] }
+      }, required:['location'] }
+    }},
+    impl: async args => {
+      const loc = encodeURIComponent(args.location || 'London');
+      const resp = await fetch(`https://wttr.in/${loc}?format=j1`);
+      if (!resp.ok) return `Could not fetch weather for "${args.location}". Try a different city name.`;
+      const d = await resp.json();
+      const cur = d.current_condition[0];
+      const area = d.nearest_area[0];
+      const city = area.areaName[0].value + ', ' + area.country[0].value;
+      const useF = args.units === 'imperial';
+      const temp = useF ? cur.temp_F + '°F' : cur.temp_C + '°C';
+      const feels = useF ? cur.FeelsLikeF + '°F' : cur.FeelsLikeC + '°C';
+      const desc = cur.weatherDesc[0].value;
+      const humidity = cur.humidity + '%';
+      const wind = useF
+        ? cur.windspeedMiles + ' mph ' + cur.winddir16Point
+        : cur.windspeedKmph + ' km/h ' + cur.winddir16Point;
+      const visibility = cur.visibility + ' km';
+      const uv = cur.uvIndex;
+
+      const today = d.weather[0];
+      const maxT = useF ? today.maxtempF+'°F' : today.maxtempC+'°C';
+      const minT = useF ? today.mintempF+'°F' : today.mintempC+'°C';
+
+      const forecast = d.weather.slice(0,3).map(day => {
+        const date = day.date;
+        const hi = useF ? day.maxtempF+'°F' : day.maxtempC+'°C';
+        const lo = useF ? day.mintempF+'°F' : day.mintempC+'°C';
+        const desc = day.hourly[4]?.weatherDesc[0]?.value || '';
+        return `  ${date}: ${desc}, High ${hi} / Low ${lo}`;
+      }).join('\n');
+
+      return `Weather for ${city}\n${'─'.repeat(40)}\nCondition: ${desc}\nTemperature: ${temp} (feels like ${feels})\nToday: High ${maxT} / Low ${minT}\nHumidity: ${humidity}\nWind: ${wind}\nVisibility: ${visibility}\nUV Index: ${uv}\n\n3-Day Forecast:\n${forecast}`;
+    }
+  }
+};
+
+// ═══════════════════════════ STORAGE ═══════════════════════════
+function loadFromStorage() {
+  try {
+    const d = JSON.parse(localStorage.getItem('nvidia-chat-engine')||'{}');
+    if (d.apiKey) { document.getElementById('api-key-input').value = d.apiKey; }
+    if (d.model) document.getElementById('model-select').value = d.model;
+    if (d.systemPrompt) document.getElementById('system-prompt').value = d.systemPrompt;
+    if (d.customTools) state.customTools = d.customTools;
+    if (d.builtinEnabled) state.builtinEnabled = {...state.builtinEnabled,...d.builtinEnabled};
+    renderCustomTools(); updateBuiltinCheckboxes();
+  } catch(e){}
+}
+function saveToStorage() {
+  localStorage.setItem('nvidia-chat-engine', JSON.stringify({
+    apiKey: document.getElementById('api-key-input').value,
+    model: document.getElementById('model-select').value,
+    systemPrompt: document.getElementById('system-prompt').value,
+    customTools: state.customTools, builtinEnabled: state.builtinEnabled,
+  }));
+}
+
+// ═══════════════════════════ UI HELPERS ═══════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.sidebar-tab').forEach((t,i)=>t.classList.toggle('active',['config','tools','gallery','guide','history'][i]===tab));
+  document.querySelectorAll('.sidebar-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(tab+'-panel').classList.add('active');
+  if (tab==='history') loadSessions();
+}
+function showToast(msg, type='error') {
+  const t=document.getElementById('toast'); t.textContent=msg; t.className='show'+(type==='success'?' success':'');
+  setTimeout(()=>t.className='',3500);
+}
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,200)+'px'; updateSendBtn(); }
+function updateSendBtn() {
+  const ok = document.getElementById('api-key-input').value.trim() && document.getElementById('chat-input').value.trim() && !state.streaming;
+  document.getElementById('send-btn').disabled = !ok;
+}
+function updateMetaBar() {
+  const model = document.getElementById('model-select').value;
+  const short = model.split('/').pop();
+  document.getElementById('chat-header-model').textContent = short;
+  document.getElementById('model-badge').textContent = short;
+  const active = getActiveTools();
+  const ind = document.getElementById('tools-indicator');
+  const info = document.getElementById('active-tools-info');
+  if (active.length) {
+    ind.style.display='flex'; document.getElementById('tools-count').textContent=active.length;
+    info.textContent=active.map(t=>t.function.name).join(', '); info.style.color='var(--tool-accent)';
+  } else { ind.style.display='none'; info.textContent='No tools active'; info.style.color=''; }
+}
+function updateTokenCount() {
+  document.getElementById('token-count').textContent = state.totalTokens>0 ? '~'+state.totalTokens.toLocaleString()+' tokens' : '';
+}
+
+// ═══════════════════════════ TOOLS ═══════════════════════════
+function getActiveTools() {
+  const t=[];
+  Object.entries(state.builtinEnabled).forEach(([n,e])=>{ if(e&&BUILTIN_TOOLS[n]) t.push(BUILTIN_TOOLS[n].schema); });
+  state.customTools.forEach(t2=>{ if(t2.enabled!==false) t.push(t2.schema); });
+  return t;
+}
+async function executeToolCall(name, args) {
+  if (BUILTIN_TOOLS[name] && state.builtinEnabled[name]) return String(BUILTIN_TOOLS[name].impl(args));
+  const tool = state.customTools.find(t=>t.schema.function.name===name);
+  if (tool?.impl) {
+    try {
+      const result = new Function('args', tool.impl)(args);
+      // Support async tool implementations
+      if (result && typeof result.then === 'function') return String(await result);
+      return String(result);
+    } catch(e) { return 'Tool error: '+e.message; }
+  }
+  return `Tool "${name}" does not exist. You must answer the user's question directly using your own knowledge — do not call any more tools.`;
+}
+function toggleBuiltinTool(name, enabled) { state.builtinEnabled[name]=enabled; saveToStorage(); updateMetaBar(); }
+function renderCustomTools() {
+  const list = document.getElementById('custom-tools-list');
+  if (!state.customTools.length) {
+    list.innerHTML='<div class="no-tools-msg">No custom tools yet.<br/>Browse the <strong style="color:var(--tool-accent);cursor:pointer" onclick="switchTab(\'gallery\')">Gallery</strong> or build your own.</div>';
+    updateMetaBar(); return;
+  }
+  list.innerHTML = state.customTools.map((t,i)=>`
+    <div class="tool-card ${t.enabled!==false?'active':''}">
+      <div class="tool-card-header">
+        ${ic('wrench',13)}
+        <span class="tool-card-name">${esc(t.schema.function.name)}</span>
+        <span class="tool-card-badge">${Object.keys(t.schema.function.parameters?.properties||{}).length}p</span>
+        <div class="tool-actions">
+          <button class="btn btn-icon btn-secondary" onclick="editTool(${i})">${ic('edit',12)}</button>
+          <button class="btn btn-icon btn-danger" onclick="deleteTool(${i})">${ic('trash',12)}</button>
+        </div>
+      </div>
+      <div class="tool-card-desc">${esc(t.schema.function.description)}</div>
+    </div>`).join('');
+  updateMetaBar();
+}
+function updateBuiltinCheckboxes() {
+  Object.entries(state.builtinEnabled).forEach(([n,e])=>{
+    const el=document.querySelector('[data-builtin="'+n+'"] input[type=checkbox]'); if(el) el.checked=e;
+  });
+}
+
+// ═══════════════════════════ GALLERY ═══════════════════════════
+function installGalleryTool(key) {
+  const g = GALLERY[key];
+  if (!g) return;
+  const name = g.schema.function.name;
+  const exists = state.customTools.find(t=>t.schema.function.name===name);
+  if (exists) { showToast(name+' is already installed.', 'error'); return; }
+  state.customTools.push({ schema: g.schema, impl: g.impl.trim(), enabled: true });
+  renderCustomTools(); saveToStorage();
+  showToast(name+' installed!', 'success');
+  switchTab('tools');
+}
+
+// ═══════════════════════════ TOOL EDITOR ═══════════════════════════
+function openToolEditor(idx=-1) {
+  state.editingToolIndex=idx; state.params=[]; document.getElementById('params-list').innerHTML='';
+  if (idx>=0) {
+    const t=state.customTools[idx];
+    document.getElementById('tool-editor-title').textContent='Edit Tool';
+    document.getElementById('tool-name').value=t.schema.function.name;
+    document.getElementById('tool-desc').value=t.schema.function.description;
+    document.getElementById('tool-impl').value=t.impl||'';
+    document.getElementById('tool-impl-json').value=t.impl||'';
+    document.getElementById('tool-json').value=JSON.stringify(t.schema.function,null,2);
+    const props=t.schema.function.parameters?.properties||{}, req=t.schema.function.parameters?.required||[];
+    Object.entries(props).forEach(([n,d])=>addParam(n,d.type||'string',d.description||'',req.includes(n)));
+  } else {
+    document.getElementById('tool-editor-title').textContent='Add Custom Tool';
+    ['tool-name','tool-desc','tool-impl','tool-impl-json','tool-json'].forEach(id=>document.getElementById(id).value='');
+  }
+  document.getElementById('tool-editor-overlay').classList.add('open');
+}
+function closeToolEditor() { document.getElementById('tool-editor-overlay').classList.remove('open'); }
+function switchEditorTab(tab) {
+  state.editorTab=tab;
+  document.querySelectorAll('.editor-tab').forEach((t,i)=>t.classList.toggle('active',['ui','json'][i]===tab));
+  document.getElementById('editor-ui-tab').style.display=tab==='ui'?'':'none';
+  document.getElementById('editor-json-tab').style.display=tab==='json'?'':'none';
+  if (tab==='json') {
+    const s=buildSchemaFromUI(); if(s) document.getElementById('tool-json').value=JSON.stringify(s,null,2);
+    document.getElementById('tool-impl-json').value=document.getElementById('tool-impl').value;
+  }
+}
+function addParam(name='',type='string',description='',required=false) {
+  const id=Date.now()+Math.random(); state.params.push({id,name,type,description,required});
+  const row=document.createElement('div'); row.className='param-row'; row.dataset.id=id;
+  row.innerHTML=`
+    <input class="config-input" placeholder="name" value="${esc(name)}" style="font-family:monospace;font-size:12px" onchange="updateParam(${id},'name',this.value)"/>
+    <select class="config-select" style="font-size:12px" onchange="updateParam(${id},'type',this.value)">
+      ${['string','integer','number','boolean','array','object'].map(t=>`<option ${t===type?'selected':''}>${t}</option>`).join('')}
+    </select>
+    <input class="config-input" placeholder="description" value="${esc(description)}" style="font-size:12px" onchange="updateParam(${id},'description',this.value)"/>
+    <button class="btn btn-icon btn-danger" onclick="removeParam(${id})">${ic('close',11)}</button>`;
+  document.getElementById('params-list').appendChild(row);
+}
+function updateParam(id,field,value) { const p=state.params.find(p=>p.id===id); if(p) p[field]=value; }
+function removeParam(id) { state.params=state.params.filter(p=>p.id!==id); document.querySelector('[data-id="'+id+'"]')?.remove(); }
+function buildSchemaFromUI() {
+  const name=document.getElementById('tool-name').value.trim();
+  const desc=document.getElementById('tool-desc').value.trim();
+  if (!name||!desc) return null;
+  document.querySelectorAll('#params-list .param-row').forEach((row,i)=>{
+    const inp=row.querySelectorAll('input,select');
+    if(state.params[i]) { state.params[i].name=inp[0].value; state.params[i].type=inp[1].value; state.params[i].description=inp[2].value; }
+  });
+  const properties={}, required=[];
+  state.params.forEach(p=>{ if(!p.name)return; properties[p.name]={type:p.type,description:p.description}; if(p.required)required.push(p.name); });
+  return { name, description:desc, parameters:{type:'object',properties,required} };
+}
+function saveTool() {
+  let schema, impl;
+  if (state.editorTab==='json') {
+    try { schema={type:'function',function:JSON.parse(document.getElementById('tool-json').value)}; impl=document.getElementById('tool-impl-json').value; }
+    catch(e) { showToast('Invalid JSON: '+e.message); return; }
+  } else {
+    const fn=buildSchemaFromUI(); if(!fn){showToast('Name and description are required.');return;}
+    schema={type:'function',function:fn}; impl=document.getElementById('tool-impl').value;
+  }
+  const tool={schema,impl,enabled:true};
+  if (state.editingToolIndex>=0) state.customTools[state.editingToolIndex]=tool; else state.customTools.push(tool);
+  renderCustomTools(); saveToStorage(); updateMetaBar(); closeToolEditor();
+  showToast(schema.function.name+' saved!','success');
+}
+function editTool(idx){openToolEditor(idx);}
+function deleteTool(idx){if(!confirm('Delete this tool?'))return;state.customTools.splice(idx,1);renderCustomTools();saveToStorage();updateMetaBar();}
+
+// ═══════════════════════════ CHAT RENDERING ═══════════════════════════
+function handleKey(e) { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!document.getElementById('send-btn').disabled)sendMessage();} }
+function useStarter(el) { document.getElementById('chat-input').value=el.textContent; autoResize(document.getElementById('chat-input')); sendMessage(); }
+function clearChat() {
+  if(state.messages.length&&!confirm('Clear all messages?'))return;
+  state.messages=[]; state.totalTokens=0;
+  document.getElementById('messages').innerHTML=emptyHTML(); updateTokenCount();
+}
+function emptyHTML() {
+  return `<div id="empty-state">
+    <div class="empty-icon"><svg viewBox="0 0 24 24"><use href="#ic-lightning"/></svg></div>
+    <h2>NVIDIA Chat Engine</h2>
+    <p>Enter your API key, pick a model, and start chatting. Install tools from the Gallery or build your own.</p>
+    <div class="starter-prompts">
+      <div class="starter-prompt" onclick="useStarter(this)">Generate a portfolio page for me</div>
+      <div class="starter-prompt" onclick="useStarter(this)">Remind me in 5 minutes to take a break</div>
+      <div class="starter-prompt" onclick="useStarter(this)">What time is it? And calculate 42 * 137</div>
+      <div class="starter-prompt" onclick="useStarter(this)">Write a React component and save it as a file</div>
+      <div class="starter-prompt" onclick="useStarter(this)">Generate a color palette for a tech startup</div>
+    </div>
+  </div>`;
+}
+function appendMessage(role, content) {
+  document.getElementById('empty-state')?.remove();
+  const div=document.createElement('div');
+  div.className='msg '+(role==='user'?'user':role==='tool-msg'?'tool-msg':'assistant');
+  const avatarIc=role==='user'?'user':role==='tool-msg'?'wrench':'bot';
+  const label=role==='user'?'You':role==='tool-msg'?'Tool Result':'Assistant';
+
+  const actionsHtml = role === 'assistant' ? `
+    <div class="msg-actions">
+      <button class="msg-action-btn" onclick="copyMsgText(this)" title="Copy response">
+        ${ic('copy',12)} Copy
+      </button>
+      <button class="msg-action-btn" onclick="thumbFeedback(this,'up')" title="Good response">
+        ${ic('thumbup',12)}
+      </button>
+      <button class="msg-action-btn" onclick="thumbFeedback(this,'down')" title="Bad response">
+        ${ic('thumbdown',12)}
+      </button>
+    </div>` : '';
+
+  div.innerHTML=`<div class="msg-avatar">${ic(avatarIc,15)}</div>
+    <div class="msg-body">
+      <div class="msg-role">${ic(avatarIc,10)}${label}</div>
+      <div class="msg-text"></div>
+      ${actionsHtml}
+    </div>`;
+  document.getElementById('messages').appendChild(div);
+  const textEl=div.querySelector('.msg-text');
+  if(content) setContent(textEl,content);
+  document.getElementById('messages').scrollTop=99999;
+  return textEl;
+}
+
+function copyMsgText(btn) {
+  const text = btn.closest('.msg-body').querySelector('.msg-text')?.innerText || '';
+  copyText(text, btn);
+}
+
+function thumbFeedback(btn, type) {
+  btn.classList.add('done');
+  btn.innerHTML = ic(type === 'up' ? 'thumbup' : 'thumbdown', 12);
+  // Could send feedback to an API here
+}
+function setContent(el, text) {
+  // 1. Pull out code blocks to protect them from inline processing
+  const blocks = [];
+  let s = text.replace(/```([\w.-]*)\r?\n?([\s\S]*?)```/g, (_, lang, code) => {
+    blocks.push({ lang: (lang || '').trim(), code: code.replace(/\n$/, '') });
+    return `\x00CB${blocks.length - 1}\x00`;
+  });
+
+  // 2. Process block-level elements line by line
+  const lines = s.split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code block placeholder — pass through
+    if (/^\x00CB\d+\x00$/.test(line.trim())) {
+      out.push(line.trim()); i++; continue;
+    }
+
+    // Headings
+    const hm = line.match(/^(#{1,3})\s+(.+)$/);
+    if (hm) {
+      const lvl = hm[1].length;
+      out.push(`<h${lvl}>${inlineEsc(hm[2])}</h${lvl}>`);
+      i++; continue;
+    }
+
+    // HR
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      out.push('<hr>'); i++; continue;
+    }
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      out.push(`<blockquote>${inlineEsc(line.slice(2))}</blockquote>`);
+      i++; continue;
+    }
+
+    // Unordered list — collect consecutive items
+    if (/^(\s*)[-*+]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^(\s*)[-*+]\s+/.test(lines[i])) {
+        items.push(`<li>${inlineEsc(lines[i].replace(/^\s*[-*+]\s+/, ''))}</li>`);
+        i++;
+      }
+      out.push(`<ul>${items.join('')}</ul>`);
+      continue;
+    }
+
+    // Ordered list
+    if (/^\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+        items.push(`<li>${inlineEsc(lines[i].replace(/^\d+\.\s+/, ''))}</li>`);
+        i++;
+      }
+      out.push(`<ol>${items.join('')}</ol>`);
+      continue;
+    }
+
+    // Table (simple)
+    if (line.includes('|') && i + 1 < lines.length && /^\|?[\s:-]+[\|[\s:-]+]+\|?$/.test(lines[i+1])) {
+      const headers = line.split('|').map(c=>c.trim()).filter(Boolean);
+      i += 2; // skip separator
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|')) {
+        rows.push(lines[i].split('|').map(c=>c.trim()).filter(Boolean));
+        i++;
+      }
+      const thead = `<tr>${headers.map(h=>`<th>${inlineEsc(h)}</th>`).join('')}</tr>`;
+      const tbody = rows.map(r=>`<tr>${r.map(c=>`<td>${inlineEsc(c)}</td>`).join('')}</tr>`).join('');
+      out.push(`<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`);
+      continue;
+    }
+
+    // Empty line — paragraph break
+    if (line.trim() === '') {
+      out.push('<br>'); i++; continue;
+    }
+
+    // Regular paragraph line
+    out.push(`<p>${inlineEsc(line)}</p>`);
+    i++;
+  }
+
+  // 3. Join and collapse multiple <br> into one
+  let html = out.join('\n').replace(/(<br>\s*){2,}/g, '<br>');
+
+  // 4. Re-inject code blocks with copy buttons
+  html = html.replace(/\x00CB(\d+)\x00/g, (_, idx) => {
+    const { lang, code } = blocks[idx];
+    const id = 'cb-' + Math.random().toString(36).slice(2);
+    const label = lang || 'code';
+    return `<div class="code-wrap">
+      <div class="code-header">
+        <span class="code-lang">${esc(label)}</span>
+        <button class="copy-btn" onclick="copyCode('${id}',this)">
+          <svg viewBox="0 0 24 24"><use href="#ic-copy"/></svg>Copy
+        </button>
+      </div>
+      <pre><code id="${id}">${esc(code)}</code></pre>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+// Inline markdown: bold, italic, inline code, links — on pre-escaped text
+function inlineEsc(text) {
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+
+function copyCode(id, btn) {
+  const code = document.getElementById(id)?.innerText || '';
+  navigator.clipboard.writeText(code).then(() => {
+    btn.innerHTML = `<svg viewBox="0 0 24 24"><use href="#ic-check"/></svg>Copied!`;
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.innerHTML = `<svg viewBox="0 0 24 24"><use href="#ic-copy"/></svg>Copy`;
+      btn.classList.remove('copied');
+    }, 2000);
+  });
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = `${ic('check',12)} Copied`;
+    btn.classList.add('done');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('done'); }, 2000);
+  });
+}
+function appendToolCallBlock(textEl, toolName, args) {
+  const b=document.createElement('div'); b.className='tool-call-block';
+  b.innerHTML=`<div class="tool-call-header">${ic('gear',12)} Calling: <span>${esc(toolName)}</span></div>
+    <div class="tool-call-args">${esc(JSON.stringify(args,null,2))}</div>`;
+  textEl.parentElement.appendChild(b); return b;
+}
+function appendToolResultBlock(container, result) {
+  const b=document.createElement('div'); b.className='tool-result-block';
+  b.innerHTML=`<div class="tool-result-header">${ic('check',12)} Result</div>
+    <div class="tool-result-content">${esc(result)}</div>`;
+  container.appendChild(b);
+}
+
+// ═══════════════════════════ API ═══════════════════════════
+async function sendMessage() {
+  const apiKey=document.getElementById('api-key-input').value.trim();
+  const userText=document.getElementById('chat-input').value.trim();
+  if (!apiKey||!userText||state.streaming) return;
+  saveToStorage();
+  const input=document.getElementById('chat-input'); input.value=''; input.style.height='auto';
+  document.getElementById('send-btn').disabled=true;
+  state.messages.push({role:'user',content:userText});
+  appendMessage('user',userText);
+  await runCompletion(apiKey);
+}
+
+async function runCompletion(apiKey, depth=0) {
+  if (depth>5){showToast('Max tool call depth reached.');return;}
+  state.streaming=true; document.getElementById('send-btn').disabled=true;
+
+  const model=document.getElementById('model-select').value;
+  const systemPrompt=document.getElementById('system-prompt').value.trim();
+  const tools=getActiveTools();
+
+  const messages=[];
+  if (systemPrompt) messages.push({role:'system',content:systemPrompt});
+  messages.push(...state.messages);
+
+  const body={
+    model, messages,
+    temperature: parseFloat(document.getElementById('temp-slider').value),
+    max_tokens: parseInt(document.getElementById('maxtok-slider').value),
+    top_p: parseFloat(document.getElementById('topp-slider').value),
+    stream: true,
+  };
+  if (tools.length){ body.tools=tools; body.tool_choice='auto'; }
+
+  const textEl=appendMessage('assistant','');
+  const cursor=document.createElement('span'); cursor.className='cursor'; textEl.appendChild(cursor);
+  let fullText='', toolCalls=[], finishReason=null;
+
+  try {
+    const resp=await fetch(BASE_URL+'/chat/completions',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+apiKey,'Content-Type':'application/json','Accept':'text/event-stream'},
+      body:JSON.stringify(body),
+    });
+    if (!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.message||e.error?.message||'HTTP '+resp.status);}
+
+    const reader=resp.body.getReader(); const decoder=new TextDecoder(); let buf='';
+    while(true){
+      const {done,value}=await reader.read(); if(done)break;
+      buf+=decoder.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop();
+      for (const line of lines){
+        if(!line.startsWith('data: '))continue;
+        const data=line.slice(6).trim();
+        if(data==='[DONE]'){finishReason=finishReason||'stop';continue;}
+        try{
+          const chunk=JSON.parse(data);
+          const delta=chunk.choices?.[0]?.delta; if(!delta)continue;
+          finishReason=chunk.choices?.[0]?.finish_reason||finishReason;
+          if(chunk.usage){state.totalTokens=chunk.usage.total_tokens||state.totalTokens;updateTokenCount();}
+          if(delta.content){fullText+=delta.content;cursor.remove();setContent(textEl,fullText);textEl.appendChild(cursor);document.getElementById('messages').scrollTop=99999;}
+          if(delta.tool_calls){for(const tc of delta.tool_calls){if(!toolCalls[tc.index])toolCalls[tc.index]={id:'',name:'',arguments:''};if(tc.id)toolCalls[tc.index].id=tc.id;if(tc.function?.name)toolCalls[tc.index].name+=tc.function.name;if(tc.function?.arguments)toolCalls[tc.index].arguments+=tc.function.arguments;}}
+        }catch(e){}
+      }
+    }
+  } catch(e){
+    cursor.remove(); textEl.innerHTML=`<span style="color:var(--error)">${esc(e.message)}</span>`;
+    state.streaming=false; updateSendBtn(); return;
+  }
+
+  cursor.remove(); if(fullText) setContent(textEl,fullText);
+
+  if (toolCalls.length){
+    state.messages.push({role:'assistant',content:fullText||'',tool_calls:toolCalls.map(tc=>({id:tc.id,type:'function',function:{name:tc.name,arguments:tc.arguments}}))});
+    for (const tc of toolCalls){
+      let args={}; try{args=JSON.parse(tc.arguments);}catch(e){}
+      const callBlock=appendToolCallBlock(textEl,tc.name,args);
+      const result=await executeToolCall(tc.name,args);
+      appendToolResultBlock(callBlock,result);
+      state.messages.push({role:'tool',tool_call_id:tc.id,content:result});
+    }
+    state.streaming=false;
+    await runCompletion(apiKey,depth+1);
+    return;
+  }
+
+  state.messages.push({role:'assistant',content:fullText});
+  state.streaming=false; updateSendBtn();
+}
+
+// ═══════════════════════════ CONNECTION ═══════════════════════════
+async function testConnection() {
+  const apiKey=document.getElementById('api-key-input').value.trim();
+  if(!apiKey){showToast('Enter an API key first.');return;}
+  const pill=document.getElementById('status-pill');
+  pill.innerHTML='<span class="status-dot"></span>Testing...'; pill.className='status-pill';
+  try{
+    const resp=await fetch(BASE_URL+'/models',{headers:{'Authorization':'Bearer '+apiKey}});
+    if(resp.ok){
+      pill.innerHTML='<span class="status-dot"></span>Connected';pill.className='status-pill connected';
+      const data=await resp.json();
+      populateModels(data.data||[]);
+      saveToStorage();updateMetaBar();
+    } else{const e=await resp.json().catch(()=>({}));throw new Error(e.message||'HTTP '+resp.status);}
+  }catch(e){pill.innerHTML='<span class="status-dot"></span>Failed';pill.className='status-pill disconnected';showToast('Connection failed: '+e.message);}
+}
+
+function populateModels(models) {
+  const sel=document.getElementById('model-select');
+  const current=sel.value;
+
+  // Group by org prefix
+  const groups={};
+  models.forEach(m=>{
+    const parts=m.id.split('/');
+    const org=parts.length>1 ? parts[0] : 'other';
+    const label=parts.length>1 ? parts[1] : m.id;
+    if(!groups[org]) groups[org]=[];
+    groups[org].push({id:m.id, label});
+  });
+
+  // Sort orgs, put nvidia first
+  const orgOrder=['nvidia','meta','mistralai','google','microsoft','qwen','deepseek'];
+  const sorted=Object.keys(groups).sort((a,b)=>{
+    const ai=orgOrder.indexOf(a), bi=orgOrder.indexOf(b);
+    if(ai>=0&&bi>=0) return ai-bi;
+    if(ai>=0) return -1; if(bi>=0) return 1;
+    return a.localeCompare(b);
+  });
+
+  sel.innerHTML='';
+  sorted.forEach(org=>{
+    const grp=document.createElement('optgroup');
+    grp.label=org.charAt(0).toUpperCase()+org.slice(1);
+    groups[org].sort((a,b)=>a.label.localeCompare(b.label)).forEach(m=>{
+      const opt=document.createElement('option');
+      opt.value=m.id; opt.textContent=m.label;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+
+  // Restore previous selection or pick a good default
+  const ids=models.map(m=>m.id);
+  if(ids.includes(current)) sel.value=current;
+  else if(ids.includes('meta/llama-3.3-70b-instruct')) sel.value='meta/llama-3.3-70b-instruct';
+  else if(ids.length) sel.value=ids[0];
+
+  document.getElementById('model-load-status').textContent=models.length+' models loaded';
+  updateMetaBar(); saveToStorage();
+}
+
+// ═══════════════════════════ SESSIONS ═══════════════════════════
+function saveSession(){
+  const model=document.getElementById('model-select').value.split('/').pop();
+  const label=`[${new Date().toLocaleString()}] ${model} — ${state.messages.filter(m=>m.role==='user').length} msgs`;
+  localStorage.setItem('nvidia-session-'+Date.now(),JSON.stringify({label,messages:state.messages,model:document.getElementById('model-select').value}));
+  loadSessions(); showToast('Session saved!','success');
+}
+function loadSessions(){
+  const list=document.getElementById('history-list'); const sessions=[];
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k?.startsWith('nvidia-session-')){try{sessions.push({key:k,...JSON.parse(localStorage.getItem(k))});}catch(e){}}}
+  if(!sessions.length){list.innerHTML='<div class="no-tools-msg">No sessions saved yet.</div>';return;}
+  list.innerHTML=sessions.sort((a,b)=>b.key.localeCompare(a.key)).map(s=>`
+    <div class="tool-card">
+      <div class="tool-card-header">
+        ${ic('history',12)}
+        <span style="font-size:11px;color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.label)}</span>
+        <button class="btn btn-icon btn-danger" onclick="deleteSession('${s.key}',event)">${ic('trash',11)}</button>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="restoreSession('${s.key}')">Restore</button>
+    </div>`).join('');
+}
+function restoreSession(key){
+  try{
+    const s=JSON.parse(localStorage.getItem(key));
+    state.messages=s.messages||[];
+    if(s.model)document.getElementById('model-select').value=s.model;
+    const msgs=document.getElementById('messages'); msgs.innerHTML='';
+    state.messages.forEach(m=>{if(m.role==='user')appendMessage('user',m.content);else if(m.role==='assistant'&&m.content)appendMessage('assistant',m.content);});
+    if(!state.messages.length)msgs.innerHTML=emptyHTML();
+    updateMetaBar(); switchTab('config');
+  }catch(e){showToast('Failed to restore session.');}
+}
+function deleteSession(key,e){e.stopPropagation();if(!confirm('Delete?'))return;localStorage.removeItem(key);loadSessions();}
+
+// ═══════════════════════════ UTILS ═══════════════════════════
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ═══════════════════════════ INIT ═══════════════════════════
+document.getElementById('api-key-input').addEventListener('input',()=>{updateSendBtn();saveToStorage();});
+document.getElementById('model-select').addEventListener('change',()=>{updateMetaBar();saveToStorage();});
+document.getElementById('system-prompt').addEventListener('input',saveToStorage);
+document.getElementById('chat-input').addEventListener('input',updateSendBtn);
+loadFromStorage(); updateMetaBar(); updateTokenCount();
+</script>
+</body>
+</html>
